@@ -3,94 +3,104 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image, ImageTk
 
-testImage = cv2.imread('test2.png')
-#testImage = cv2.cvtColor(testImage, cv2.COLOR_BGR2RGB)
-img = cv2.cvtColor(testImage, cv2.COLOR_BGR2GRAY)
-#testImage = Image.open('test.jpg')
-testImage = np.asarray(testImage)
-print(testImage)
-
-
-def hmap(mapTemp, img):
-        
-        width = img.shape[0]
-        height = img.shape[1]
-
-        #setting up selected mapTemp
-        if mapTemp == 1:
-            heatMap_array = hmap_setup(current_cmap = 'cmap_plasma.jpg')
-        elif mapTemp == 2:
-            heatMap_array = hmap_setup(current_cmap = 'cmap_plasma.jpg')
-        elif mapTemp == 3:
-            heatMap_array = hmap_setup(current_cmap = 'cmap_plasma.jpg')
-        else: heatMap_array = hmap_setup(current_cmap = 'cmap_plasma.jpg')
-
-        # create blank rgb on which new image wil be projected
-        blank_rgb = np.zeros((width, height, 3))
-        blank_rgb = blank_rgb.astype(int)
+class Gradient_Huemap_Stream():
     
-        # (no clipping included)
-        index_matrix = cv2.normalize(img, img, 0, len(heatMap_array), cv2.NORM_MINMAX)
-        index_matrix = index_matrix.astype(int)
+    def __init__(self, image,scale_factor,cold_color,hot_color,clockwise):
+        self.cold_color = cold_color
+        self.hot_color = hot_color
+        self.clockwise = clockwise
+        self.width = int(image.shape[1]*scale_factor)
+        self.height = int(image.shape[0]*scale_factor)
+        self.blank_rgb = np.zeros((int(self.height), int(self.width), 3)).astype(int)
+        self.scale_factoruc = scale_factor
 
 
-        print(blank_rgb)
-        print(blank_rgb.shape)
-        print('üüüüüüüüüüüüüüüüüüüüüüüüüüüüü')
-        print(heatMap_array)
-        print('üüüüüüüüüüüüüüüüüüüüüüüüüüüüü')
-        print(index_matrix)
 
 
-        for x in range(width):
-            for y in range(height):
-                t = index_matrix[x][y]
-                print(t)
-                blank_rgb[x][y] = heatMap_array[t-1]
-        blank_rgb = np.uint8(blank_rgb)
-
-        return blank_rgb
+    def standardize_image_channels(img):
+        if len(img.shape) == 2: pass
+        elif len(img.shape) == 3 and img.shape[2] == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return img
 
 
-def hmap_setup(current_cmap):
 
-        ## Loading JPG file as Heat Map
-        color_arr = cv2.imread(current_cmap)
-        color_arr = cv2.cvtColor(color_arr, cv2.COLOR_BGR2RGB)
 
-        ## Analyzing Heat Map PNG and storing in array
-        cmap_dim = color_arr.shape
-        cmap_height = cmap_dim[0]
-        cmap_width = cmap_dim[1]
-        counter = 0
-        heatMap_array = []
+    def generate_rgb_gradient_linear(cold_color, hot_color, steps):
 
-        while counter < cmap_height:
-            for i in range(cmap_height):
-                for j in range(1):
-                    r = color_arr[i][1][0]
-                    g = color_arr[i][1][1]
-                    b = color_arr[i][1][2]
-                    rgb_val = (r,g,b)
-                    heatMap_array.append(rgb_val)
-                    counter +=1
+        # Erstellen der Interpolationsschritte
+        r = np.linspace(cold_color[0], hot_color[0], steps)
+        g = np.linspace(cold_color[1], hot_color[1], steps)
+        b = np.linspace(cold_color[2], hot_color[2], steps)
 
-        ## reverses Heat Map Image
-        heatMap_array = heatMap_array[::-1]
+        #gradient = np.vstack((r, g, b)).T.astype(int) # Kombinieren der RGB-Werte zu einem Array
+        gradient = np.vstack((r, g, b)).T.astype(int) # Kombinieren der RGB-Werte zu einem 2D-Array
         
-        #temp_range = maximum - minimum
-
-        #temp_unit_range = maximum - minimum
-        #temp_unit=int(len(heatMap_array)/temp_unit_range)
-
-        #return heatMap_array, temp_unit, temp_range
-        return heatMap_array
+        return gradient
+    
 
 
 
+    def generate_rgb_gradient_circle(cold_color, hot_color, steps, clockwise):
 
-testImage = hmap(1,testImage)
-testImage = ImageTk.PhotoImage(Image.fromarray(testImage))
-testImage = Image.fromarray(testImage)
-plt.imshow(testImage)
-plt.show(testImage)
+        # Konvertieren der Eingabefarben von RGB zu HSV
+        cold_color_hsv = cv2.cvtColor(np.uint8([[cold_color]]), cv2.COLOR_RGB2HSV)[0][0]
+        hot_color_hsv = cv2.cvtColor(np.uint8([[hot_color]]), cv2.COLOR_RGB2HSV)[0][0]
+
+        # Extrahieren der HSV-Komponenten
+        h1, s1, v1 = cold_color_hsv
+        h2, s2, v2 = hot_color_hsv
+
+        if clockwise:
+            if h2 < h1:
+                max_h_value = 179
+                steps_part1 = int(np.ceil((max_h_value - h1) / (max_h_value - h1 + h2) * steps))
+                steps_part2 = steps - steps_part1
+                part1 = np.linspace(h1, max_h_value, steps_part1, endpoint=False)
+                part2 = np.linspace(0, h2, steps_part2, endpoint=True)
+            else:
+                part1 = np.linspace(h1, h2, steps)
+                part2 = np.array([], dtype=np.float64)  # leeres Array für den Fall h2 >= h1
+        else:
+            if h1 < h2:
+                max_h_value = 179
+                steps_part1 = int(np.ceil(h1 / (h1 + (max_h_value - h2 + 1)) * steps))
+                steps_part2 = steps - steps_part1
+                part1 = np.linspace(h1, 0, steps_part1, endpoint=False)
+                part2 = np.linspace(max_h_value, h2, steps_part2, endpoint=True)
+            else:
+                part1 = np.linspace(h1, h2, steps)
+                part2 = np.array([], dtype=np.float64)  # leeres Array für den Fall h1 >= h2
+        
+        # Kombinieren der beiden Teile
+        result = np.concatenate((part1, part2))
+        
+        # Umwandeln der Zahlen in HSV-H-Werte
+        h = result % 180  # 180, da der maximale HSV H-Wert 179 ist
+        s = np.linspace(s1, s2, steps)
+        v = np.linspace(v1, v2, steps)
+
+        # Kombinieren der HSV-Werte zu einem 2D-Array
+        gradient_hsv = np.vstack((h, s, v)).T.astype(np.uint8)
+
+        # Konvertieren des HSV-Gradienten zurück in RGB
+        gradient_rgb = cv2.cvtColor(gradient_hsv.reshape(-1, 1, 3), cv2.COLOR_HSV2RGB).reshape(-1, 3)
+
+        return gradient_rgb
+
+
+
+
+    def stream_gradient_huemap(self,img):
+        self.steps = np.max(img) - np.min(img)
+        self.gradient = Gradient_Huemap_Stream.generate_rgb_gradient_linear(self.cold_color,self.hot_color,self.steps)
+
+        blank_rgb = self.blank_rgb
+
+        img = cv2.resize(img, (int(self.width),int(self.height)), interpolation=cv2.INTER_AREA)
+        img = Gradient_Huemap_Stream.standardize_image_channels(img)  # standadize image color channels (every input image will be converted to 256 greyscale image)
+        gradiation_matrix = cv2.normalize(img, img, 0, len(self.gradient)-1, cv2.NORM_MINMAX).astype(int) # contains the calculated step/greyscale value for every pixel on the image
+        blank_rgb = self.gradient[gradiation_matrix]
+        result = np.uint8(blank_rgb)
+
+        return result
